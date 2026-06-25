@@ -1,0 +1,689 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <iomanip>
+#include <ctime>
+#include <cstdio> // Para a função remove()
+
+using namespace std;
+
+//==============================
+// CONSTANTES DO SISTEMA
+//==============================
+const int MAX_GASTOS = 100;
+
+//==============================
+// ESTRUTURAS
+//==============================
+struct Data {
+    int dia;
+    int mes;
+    int ano;
+};
+
+struct Utilizador {
+    string nome;
+    int idade;
+    int perfil;
+    int tipoRenda;
+    int periodicidade;
+    int numeroFilhos;
+    float rendaBase;
+    float saldoAtual;
+    float saldoInicial;
+    float poupancaAcumulada;
+};
+
+struct DespesasObrigatorias {
+    float mensalidade;
+    float transporte;
+    float alimentacao;
+    float rendaCasa;
+    float agua;
+    float eletricidade;
+    float internet;
+    float outras;
+};
+
+struct Gasto {
+    Data data;
+    string descricao;
+    string categoria;
+    float valor;
+    bool necessario;
+    bool prioritario;
+};
+
+struct HistoricoDia {
+    int diaDoCiclo;
+    Data data;
+    float receita;
+    float totalGastos;
+    float gastosNecessarios;
+    float gastosDesnecessarios;
+    float valorPoupadoHoje;
+    string avaliacao;
+    vector<Gasto> gastos;
+};
+
+//==============================
+// VARIÁVEIS GLOBAIS
+//==============================
+Utilizador usuario;
+DespesasObrigatorias despesasFixas;
+vector<Gasto> listaGastos;
+vector<HistoricoDia> historico;
+
+float totalNecessario = 0;
+float totalNaoNecessario = 0;
+int diasProdutivos = 0;
+int diasEquilibrados = 0;
+int diasImprodutivos = 0;
+
+//=====================================
+// DECLARAÇÃO DE PROTÓTIPOS
+//=====================================
+Data obterDataAtual();
+void mostrarData(Data d);
+void pausa();
+void guardarDados();
+bool carregarDados();
+void reiniciarSistema();
+void guardarHistorico(HistoricoDia dia);
+void adicionarRendaExtra();
+void cadastrarUtilizador();
+void configurarRenda();
+void mostrarPerfil();
+bool temFamilia();
+void alterarPerfil();
+void configurarDespesasObrigatorias(bool ehCadastroInicial = false);
+float calcularDespesasObrigatorias(bool ehCadastroInicial = false);
+void mostrarDespesasObrigatorias();
+string escolherCategoria();
+void registrarGastosDia();
+string avaliarDia(HistoricoDia dia);
+void mostrarFeedback(HistoricoDia dia);
+void relatorioDiario();
+void relatorioMensal();
+void calcularIndiceFinanceiro();
+void menuPrincipal();
+//=====================================
+// IMPLEMENTAÇÃO EXTRAS E CORREÇÕES
+//=====================================
+bool carregarDados() {
+    ifstream arquivo("dados.txt");
+    if(!arquivo) return false;
+    
+    getline(arquivo, usuario.nome);
+    arquivo >> usuario.idade >> usuario.perfil >> usuario.tipoRenda >> usuario.periodicidade >> usuario.numeroFilhos;
+    arquivo >> usuario.rendaBase >> usuario.saldoInicial >> usuario.saldoAtual >> usuario.poupancaAcumulada;
+    arquivo >> despesasFixas.mensalidade >> despesasFixas.transporte >> despesasFixas.alimentacao >> despesasFixas.rendaCasa;
+    arquivo >> despesasFixas.agua >> despesasFixas.eletricidade >> despesasFixas.internet >> despesasFixas.outras;
+    arquivo.close();
+    return true;
+}
+
+void reiniciarSistema() {
+    char confirmacao;
+    cout << "\n[AVISO CRITICO] Tem certeza que deseja apagar todos os dados e recomecar? (S/N): ";
+    cin >> confirmacao;
+    
+    if(confirmacao == 'S' || confirmacao == 's') {
+        remove("dados.txt"); 
+        cout << "\nTodos os dados foram limpos com sucesso. O programa sera fechado. Por favor, reinicie para criar um novo perfil.\n";
+        pausa();
+        exit(0);
+    } else {
+        cout << "\nOperacao cancelada.\n";
+    }
+}
+
+void guardarHistorico(HistoricoDia dia) {
+    // Espaço para logs futuros
+}
+
+void adicionarRendaExtra() {
+    float extra;
+    cout << "\nValor da renda extra (ou digite 0 para voltar): ";
+    cin >> extra;
+    if(extra <= 0) return;
+    
+    usuario.saldoAtual += extra;
+    cout << "Renda adicionada! Novo saldo: " << usuario.saldoAtual << " MT\n";
+    guardarDados();
+    pausa();
+}
+
+void alterarPerfil() {
+    cout << "\n==============================";
+    cout << "\n ALTERAR PERFIL E IDENTIDADE";
+    cout << "\n==============================\n";
+    cout << "Aviso: Mudar de perfil exige inserir uma nova identidade.\n";
+    cout << "Deseja continuar? (1 - Sim / 0 - Voltar): ";
+    int prosseguir;
+    cin >> prosseguir;
+    if(prosseguir == 0) return;
+
+    cin.ignore(10000, '\n'); 
+
+    cout << "Novo Nome do Utilizador: ";
+    getline(cin, usuario.nome); 
+    
+    cout << "Nova Idade: ";
+    cin >> usuario.idade;
+
+    cout << "\n--- MENU DE CATEGORIAS DISPONIVEIS ---\n";
+    cout << "1 - Estudante\n";
+    cout << "2 - Trabalhador solteiro\n";
+    cout << "3 - Trabalhador com filhos\n";
+    cout << "4 - Casal sem filhos\n";
+    cout << "5 - Casal com filhos\n";
+    cout << "Escolha a nova categoria: ";
+    cin >> usuario.perfil;
+
+    if(usuario.perfil == 3 || usuario.perfil == 5) {
+        cout << "Numero de filhos: ";
+        cin >> usuario.numeroFilhos;
+    } else {
+        usuario.numeroFilhos = 0;
+    }
+
+    cout << "\nIdentidade e Perfil alterados com sucesso! Configure a renda para o novo perfil.\n";
+    configurarRenda();
+}
+
+Data obterDataAtual() {
+    Data d;
+    time_t agora = time(0);
+    tm *tempo = localtime(&agora);
+    d.dia = tempo->tm_mday;
+    d.mes = tempo->tm_mon + 1;
+    d.ano = tempo->tm_year + 1900;
+    return d;
+}
+
+void mostrarData(Data d) {
+    cout << d.dia << "/" << d.mes << "/" << d.ano;
+}
+
+void pausa() {
+    cout << "\nPressione ENTER para continuar...";
+    cin.ignore(10000, '\n'); 
+    cin.get();
+}
+
+void guardarDados() {
+    ofstream arquivo("dados.txt");
+    if(!arquivo) {
+        cout << "Erro ao abrir ficheiro!";
+        return;
+    }
+    arquivo << usuario.nome << endl;
+    arquivo << usuario.idade << endl;
+    arquivo << usuario.perfil << endl;
+    arquivo << usuario.tipoRenda << endl;
+    arquivo << usuario.periodicidade << endl;
+    arquivo << usuario.numeroFilhos << endl;
+    arquivo << usuario.rendaBase << endl;
+    arquivo << usuario.saldoInicial << endl;
+    arquivo << usuario.saldoAtual << endl;
+    arquivo << usuario.poupancaAcumulada << endl;
+    arquivo << despesasFixas.mensalidade << endl;
+    arquivo << despesasFixas.transporte << endl;
+    arquivo << despesasFixas.alimentacao << endl;
+    arquivo << despesasFixas.rendaCasa << endl;
+    arquivo << despesasFixas.agua << endl;
+    arquivo << despesasFixas.eletricidade << endl;
+    arquivo << despesasFixas.internet << endl;
+    arquivo << despesasFixas.outras << endl;
+    arquivo.close();
+}
+
+void cadastrarUtilizador() {
+    cout << "\n==============================";
+    cout << "\n CADASTRO DO UTILIZADOR";
+    cout << "\n==============================\n";
+    
+    cin.ignore(10000, '\n');
+    
+    cout << "Nome: ";
+    getline(cin, usuario.nome);
+    
+    cout << "Idade: ";
+    cin >> usuario.idade;
+    
+    cout << "\nPERFIL DO UTILIZADOR\n";
+    cout << "1 - Estudante\n";
+    cout << "2 - Trabalhador solteiro\n";
+    cout << "3 - Trabalhador com filhos\n";
+    cout << "4 - Casal sem filhos\n";
+    cout << "5 - Casal com filhos\n";
+    cout << "Escolha: ";
+    cin >> usuario.perfil;
+
+    if(usuario.perfil == 3 || usuario.perfil == 5) {
+        cout << "Numero de filhos: ";
+        cin >> usuario.numeroFilhos;
+    } else {
+        usuario.numeroFilhos = 0;
+    }
+
+    cout << "\nTIPO DE RENDA\n";
+    cout << "1 - Renda fixa\n";
+    cout << "2 - Renda variavel\n";
+    cout << "Escolha: ";
+    cin >> usuario.tipoRenda;
+    
+    usuario.poupancaAcumulada = 0;
+}
+
+void configurarRenda() {
+    cout << "\n==============================";
+    cout << "\n CONFIGURACAO DA RENDA";
+    cout << "\n==============================\n";
+
+    if(usuario.tipoRenda == 1) {
+        cout << "\nPeriodicidade:\n";
+        cout << "1 - Diaria\n";
+        cout << "2 - Semanal\n";
+        cout << "3 - Mensal\n";
+        cout << "4 - Anual\n";
+        cout << "Escolha: ";
+        cin >> usuario.periodicidade;
+
+        cout << "\nValor da renda: ";
+        cin >> usuario.rendaBase;
+        usuario.saldoInicial = usuario.rendaBase;
+        usuario.saldoAtual = usuario.rendaBase;
+    } else {
+        usuario.periodicidade = 0;
+        cout << "\nInforme a renda do dia: ";
+        cin >> usuario.rendaBase;
+        usuario.saldoInicial = usuario.rendaBase;
+        usuario.saldoAtual = usuario.rendaBase;
+    }
+    guardarDados();
+}
+
+void mostrarPerfil() {
+    cout << "\n========= PERFIL =========\n";
+    cout << "Nome: " << usuario.nome << endl;
+    cout << "Idade: " << usuario.idade << endl;
+    
+    cout << "Perfil / Categoria: ";
+    if(usuario.perfil == 1) cout << "Estudante\n";
+    else if(usuario.perfil == 2) cout << "Trabalhador solteiro\n";
+    else if(usuario.perfil == 3) cout << "Trabalhador com filhos (" << usuario.numeroFilhos << ")\n";
+    else if(usuario.perfil == 4) cout << "Casal sem filhos\n";
+    else if(usuario.perfil == 5) cout << "Casal com filhos (" << usuario.numeroFilhos << ")\n";
+    
+    cout << "Saldo actual: " << usuario.saldoAtual << " MT\n";
+    cout << "Poupança Total Acumulada: " << usuario.poupancaAcumulada << " MT\n";
+    pausa();
+}
+
+bool temFamilia() {
+    if(usuario.perfil == 3 || usuario.perfil == 4 || usuario.perfil == 5) {
+        return true;
+    }
+    return false;
+}
+void configurarDespesasObrigatorias(bool ehCadastroInicial) {
+    cout << "\n================================";
+    cout << "\n CONFIGURAR DESPESAS OBRIGATORIAS";
+    cout << "\n================================\n";
+    if(!ehCadastroInicial) {
+        cout << "Deseja voltar? (1 - Continuar / 0 - Voltar): ";
+        int voltar;
+        cin >> voltar;
+        if(voltar == 0) return;
+    }
+
+    cout << "Mensalidades (Escola/Faculdade): "; cin >> despesasFixas.mensalidade;
+    cout << "Transporte: "; cin >> despesasFixas.transporte;
+    cout << "Alimentacao Base: "; cin >> despesasFixas.alimentacao;
+    cout << "Renda da casa / Quarto: "; cin >> despesasFixas.rendaCasa;
+    cout << "Agua: "; cin >> despesasFixas.agua;
+    cout << "Eletricidade: "; cin >> despesasFixas.eletricidade;
+    cout << "Internet: "; cin >> despesasFixas.internet;
+    cout << "Outras despesas fixas: "; cin >> despesasFixas.outras;
+
+    calcularDespesasObrigatorias(ehCadastroInicial);
+    guardarDados();
+    pausa();
+}
+
+float calcularDespesasObrigatorias(bool ehCadastroInicial) {
+    float total = 0;
+    total += despesasFixas.mensalidade;
+    total += despesasFixas.transporte;
+    total += despesasFixas.alimentacao;
+    total += despesasFixas.rendaCasa;
+    total += despesasFixas.agua;
+    total += despesasFixas.eletricidade;
+    total += despesasFixas.internet;
+    total += despesasFixas.outras;
+
+    if (ehCadastroInicial) {
+        usuario.saldoAtual = usuario.rendaBase - total;
+    }
+
+    cout << "\n==============================";
+    cout << "\nRESUMO DAS OBRIGACOES";
+    cout << "\n==============================";
+    cout << "\nRenda Base: " << usuario.rendaBase << " MT";
+    cout << "\nTotal de Despesas Obrigatorias: " << total << " MT";
+    cout << "\nSaldo Disponivel Estimado: " << (usuario.rendaBase - total) << " MT\n";
+
+    return total;
+}
+
+void mostrarDespesasObrigatorias() {
+    cout << "\n===== DESPESAS FIXAS ATUAIS =====\n";
+    cout << "Mensalidade: " << despesasFixas.mensalidade << " MT\n";
+    cout << "Transporte: " << despesasFixas.transporte << " MT\n";
+    cout << "Alimentacao: " << despesasFixas.alimentacao << " MT\n";
+    cout << "Renda da casa: " << despesasFixas.rendaCasa << " MT\n";
+    cout << "Agua: " << despesasFixas.agua << " MT\n";
+    cout << "Eletricidade: " << despesasFixas.eletricidade << " MT\n";
+    cout << "Internet: " << despesasFixas.internet << " MT\n";
+    cout << "Outras: " << despesasFixas.outras << " MT\n";
+    pausa();
+}
+
+string escolherCategoria() {
+    int opcao;
+    cout << "\nCategoria do gasto\n";
+    cout << "1 - Alimentacao\n";
+    cout << "2 - Transporte\n";
+    cout << "3 - Saude\n";
+    cout << "4 - Educacao\n";
+    cout << "5 - Lazer\n";
+    cout << "6 - Casa\n";
+    cout << "7 - Outros\n";
+    cout << "Escolha: ";
+    cin >> opcao;
+
+    switch(opcao) {
+        case 1: return "Alimentacao";
+        case 2: return "Transporte";
+        case 3: return "Saude";
+        case 4: return "Educacao";
+        case 5: return "Lazer";
+        case 6: return "Casa";
+        default: return "Outros";
+    }
+}
+
+void registrarGastosDia() {
+    HistoricoDia dia;
+    dia.data = obterDataAtual();
+    dia.receita = 0;
+    dia.totalGastos = 0;
+    dia.gastosNecessarios = 0;
+    dia.gastosDesnecessarios = 0;
+    dia.valorPoupadoHoje = 0;
+
+    cout << "\n==============================";
+    cout << "\n REGISTO DIARIO";
+    cout << "\n==============================\n";
+    cout << "Deseja continuar? (1 - Sim / 0 - Voltar ao Menu): ";
+    int voltar;
+    cin >> voltar;
+    if(voltar == 0) return;
+    
+    cout << "Que dia do ciclo/mes e hoje? (Ex: 1, 2, 15...): ";
+    cin >> dia.diaDoCiclo;
+
+    cout << "Data do Sistema: ";
+    mostrarData(dia.data);
+
+    int quantidade;
+    cout << "\n\nQuantos gastos teve hoje? (Ou digite 0 para pular para poupancas): ";
+    cin >> quantidade;
+    
+    for(int i = 1; i <= quantidade; i++) {
+        Gasto g;
+        g.data = dia.data;
+
+        cout << "\n----------------------";
+        cout << "\nGASTO " << i;
+        cout << "\n----------------------\n";
+        
+        cin.ignore(10000, '\n'); 
+        cout << "Descricao: ";
+        getline(cin, g.descricao);
+
+        g.categoria = escolherCategoria();
+        cout << "Valor (MT): ";
+        cin >> g.valor;
+
+        int opcao;
+        cout << "\nFoi necessario?\n";
+        cout << "1 - Sim\n";
+        cout << "2 - Nao\n";
+        cout << "Escolha: ";
+        cin >> opcao;
+
+        if(opcao == 1) {
+            g.necessario = true;
+            dia.gastosNecessarios += g.valor;
+        } else {
+            g.necessario = false;
+            dia.gastosDesnecessarios += g.valor;
+        }
+
+        cout << "\nEra prioritario?\n";
+        cout << "1 - Sim\n";
+        cout << "2 - Nao\n";
+        cout << "Escolha: ";
+        cin >> opcao;
+
+        if(opcao == 1) g.prioritario = true;
+        else g.prioritario = false;
+
+        usuario.saldoAtual -= g.valor;
+        dia.totalGastos += g.valor;
+        dia.gastos.push_back(g);
+
+        cout << "\nSaldo atual: " << usuario.saldoAtual << " MT\n";
+    }
+
+    float poupancaHoje = 0;
+    cout << "\n==============================";
+    cout << "\n DEPOSITO EM POUPANCA";
+    cout << "\n==============================\n";
+    cout << "Saldo disponivel para poupar: " << usuario.saldoAtual << " MT\n";
+    cout << "Quanto deseja poupar e guardar hoje? (MT) [Ou digite 0 para pular]: ";
+    cin >> poupancaHoje;
+
+    if(poupancaHoje > 0 && poupancaHoje <= usuario.saldoAtual) {
+        usuario.saldoAtual -= poupancaHoje;
+        usuario.poupancaAcumulada += poupancaHoje;
+        dia.valorPoupadoHoje = poupancaHoje;
+        cout << "Sucesso! " << poupancaHoje << " MT foram transferidos para a sua Conta Poupança.\n";
+    } else if (poupancaHoje > usuario.saldoAtual) {
+        cout << "Aviso: Nao tem saldo suficiente para poupar esse valor hoje.\n";
+    }
+
+    dia.avaliacao = avaliarDia(dia);
+    historico.push_back(dia);
+    guardarHistorico(dia);
+    guardarDados();
+    mostrarFeedback(dia);
+    pausa();
+}
+
+string avaliarDia(HistoricoDia dia) {
+    float total = dia.totalGastos;
+    if(total == 0) return "Sem gastos";
+
+    if(usuario.saldoAtual < 0) return "Dia critico (Saldo Negativo)";
+    
+    if(dia.gastosDesnecessarios > dia.gastosNecessarios) {
+        return "Dia desequilibrado (Excesso de superfluos)";
+    }
+
+    float percentagemNecessaria = (dia.gastosNecessarios * 100) / total;
+    if(percentagemNecessaria >= 70) return "Dia produtivo";
+    
+    return "Dia equilibrado";
+}
+
+void mostrarFeedback(HistoricoDia dia) {
+    cout << "\n==============================";
+    cout << "\n FEEDBACK FINANCEIRO (DIA " << dia.diaDoCiclo << ")";
+    cout << "\n==============================\n";
+    cout << "Resultado: " << dia.avaliacao << endl;
+
+    if(dia.avaliacao == "Dia produtivo") {
+        cout << "\nExcelente comportamento! Controlou os seus impulsos e focou-se no essencial.\n";
+        cout << "Poupança de hoje: " << dia.valorPoupadoHoje << " MT guardados com sucesso.\n";
+    } else if(dia.avaliacao == "Dia desequilibrado (Excesso de superfluos)") {
+        cout << "\n[ALERTA DE COMPORTAMENTO]\n";
+        cout << "Hoje voce gastou muito dinheiro com besteiras ou despesas desnecessarias (" << dia.gastosDesnecessarios << " MT).\n";
+        cout << "CONSELHO: Evite repetir estas praticas nos proximos dias. Se continuar assim, podera comprometer o orçamento do mes!\n";
+    } else if(usuario.saldoAtual < 0) {
+        cout << "\n[SITUAÇAO PERIGOSA]\n";
+        cout << "O seu saldo ficou negativo! Corte imediatamente qualquer gasto nao-essencial.\n";
+    } else {
+        cout << "\nAs suas finanças estao estaveis, mas lembre-se de monitorar despesas pequenas que parecem inofensivas.\n";
+    }
+}
+
+void relatorioDiario() {
+    cout << "\n==============================";
+    cout << "\n RELATORIO DIARIO";
+    cout << "\n==============================\n";
+    
+    if(historico.empty()) {
+        cout << "Nenhum gasto registado nesta sessao.\n";
+        pausa();
+        return;
+    }
+
+    HistoricoDia dia = historico.back();
+    cout << "Dia do ciclo informado: " << dia.diaDoCiclo << endl;
+    cout << "Total gasto hoje: " << dia.totalGastos << " MT";
+    cout << "\nGastos necessarios: " << dia.gastosNecessarios << " MT";
+    cout << "\nGastos desnecessarios: " << dia.gastosDesnecessarios << " MT";
+    cout << "\nGuardado para poupança hoje: " << dia.valorPoupadoHoje << " MT";
+    cout << "\nSaldo disponivel na conta principal: " << usuario.saldoAtual << " MT";
+    cout << "\nTotal acumulado na conta poupança: " << usuario.poupancaAcumulada << " MT";
+    cout << "\nAvaliacao: " << dia.avaliacao << endl;
+    pausa();
+}
+
+void relatorioMensal() {
+    float totalGasto = 0;
+    float totNecessario = 0;
+    float totNaoNecessario = 0;
+    int dias = historico.size();
+
+    for(size_t i = 0; i < historico.size(); i++) {
+        totalGasto += historico[i].totalGastos;
+        totNecessario += historico[i].gastosNecessarios;
+        totNaoNecessario += historico[i].gastosDesnecessarios;
+    }
+
+    cout << "\n==============================";
+    cout << "\n RELATORIO GERAL";
+    cout << "\n==============================\n";
+    cout << "Utilizador: " << usuario.nome;
+    cout << "\nRenda inicial: " << usuario.rendaBase << " MT";
+    cout << "\nTotal gasto: " << totalGasto << " MT";
+    cout << "\nGastos necessarios acumulados: " << totNecessario << " MT";
+    cout << "\nGastos desnecessarios acumulados: " << totNaoNecessario << " MT";
+    cout << "\nTotal seguro no Cofre de Poupança: " << usuario.poupancaAcumulada << " MT";
+    cout << "\nDias registados nesta sessao: " << dias;
+
+    calcularIndiceFinanceiro();
+    pausa();
+}
+
+void calcularIndiceFinanceiro() {
+    float indice;
+    float usado = usuario.rendaBase - usuario.saldoAtual;
+
+    if(usuario.rendaBase == 0) {
+        indice = 0;
+    } else {
+        indice = ((usuario.rendaBase - usado) / usuario.rendaBase) * 100;
+    }
+
+    cout << "\n\nIndice Financeiro: " << fixed << setprecision(2) << indice << "%";
+    cout << "\nSituacao: ";
+
+    if(indice >= 81) cout << "SAUDAVEL";
+    else if(indice >= 61) cout << "ESTAVEL";
+    else if(indice >= 41) cout << "RISCO";
+    else cout << "CRITICA";
+    cout << endl;
+}
+
+void menuPrincipal() {
+    int opcao;
+    do {
+        cout << "\n==============================";
+        cout << "\n GESTOR FINANCEIRO PESSOAL";
+        cout << "\n==============================";
+        cout << "\nUtilizador: " << usuario.nome;
+        
+        cout << " | Categoria: ";
+        if(usuario.perfil == 1) cout << "Estudante";
+        else if(usuario.perfil == 2) cout << "Trabalhador solteiro";
+        else if(usuario.perfil == 3) cout << "Trabalhador c/ filhos";
+        else if(usuario.perfil == 4) cout << "Casal sem filhos";
+        else if(usuario.perfil == 5) cout << "Casal com filhos";
+        
+        cout << "\nSaldo: " << usuario.saldoAtual << " MT | Poupança: " << usuario.poupancaAcumulada << " MT";
+        cout << "\n\n1 - Registar gastos + Poupança Diaria";
+        cout << "\n2 - Adicionar renda extra";
+        cout << "\n3 - Ver perfil";
+        cout << "\n4 - Relatorio do ultimo dia registado";
+        cout << "\n5 - Relatorio mensal / acumulado";
+        cout << "\n6 - Ver despesas obrigatorias";
+        cout << "\n7 - Configurar/Alterar despesas obrigatorias";
+        cout << "\n8 - Mudar Utilizador / Alternar Perfil Completo";
+        cout << "\n9 - APAGAR TUDO E RECOMEÇAR SISTEMA";
+        cout << "\n0 - Sair";
+        cout << "\n\nOpcao: ";
+        cin >> opcao;
+
+        switch(opcao) {
+            case 1: registrarGastosDia(); break;
+            case 2: adicionarRendaExtra(); break;
+            case 3: mostrarPerfil(); break;
+            case 4: relatorioDiario(); break;
+            case 5: relatorioMensal(); break;
+            case 6: mostrarDespesasObrigatorias(); break;
+            case 7: configurarDespesasObrigatorias(false); break;
+            case 8: alterarPerfil(); break;
+            case 9: reiniciarSistema(); break;
+            case 0:
+                guardarDados();
+                cout << "\nDados guardados. Ate a proxima!\n";
+                break;
+            default: cout << "\nOpcao invalida!\n";
+        }
+    } while(opcao != 0);
+}
+
+int main() {
+    bool existe = carregarDados();
+
+    if(existe) {
+        cout << "\nDados encontrados!\n";
+        cout << "Bem-vindo novamente " << usuario.nome << endl;
+    } else {
+        cout << "\nNovo utilizador encontrado no sistema.\n";
+        cadastrarUtilizador();
+        configurarRenda();
+        configurarDespesasObrigatorias(true); 
+        guardarDados();
+    }
+
+    menuPrincipal();
+    return 0;
+}
